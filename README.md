@@ -65,4 +65,155 @@ Now, let's perform some preprocessing on the dataset to transform it into a suit
 {"prompt": "This is the second prompt", "completion": "This is the second completion"}
 ```
 
-You can download the dataset in JSON format in thus repo as bc5cdr.json
+You can download the dataset in JSON format in thus repo as `bc5cdr.json`
+
+Then, we can open file using the code below. 
+
+```
+with open('bc5cdr.json') as json_file:
+    data = json.load(json_file)
+
+print(data[0])
+```
+
+Now, we can iterate through the dataset, extract the abstracts and related entities, and include the necessary instructions for training. There are two sets of instructions: the first set aids the model in understanding the task, while the second set prompts it how to generate the response.
+
+```
+instruction = "The following article contains technical terms including diseases, drugs and chemicals. Create a list only of the diseases mentioned.\n\n"
+output_instruction = "\n\nList of extracted diseases:\n"
+```
+
+The instruction variable establishes the guidelines, while the output_instruction defines the desired format for the output. Now, we loop through the dataset and format each instance.
+
+```
+the_list = []
+for item in data:
+  dis = []
+
+  if item['dataset_type'] != "test": continue; # Don't use test set
+
+	# Extract the disease names
+	for ent in item['passages'][1]['entities']: # The annotations
+    if ent['type'] == "Disease": # Only select disease names
+      if ent['text'][0] not in dis: # Remove duplicate diseases in a text
+        dis.append(ent['text'][0])
+
+	the_list.append( 
+			{'prompt':  instruction +
+									item['passages'][1]['text'] +
+									output_instruction,
+			'completion': "- "+ "\n- ".join(dis)}
+	)
+```
+
+The mention code may appear complex, but for each sample, it essentially iterates through all the annotations and selectively chooses only the disease-related ones. We employ this approach because the dataset includes extra labels for chemicals, which are not relevant to our model. Finally, it will generate a dictionary containing the prompt and completion keys. The prompt will incorporate the paper abstract and append the instructions to it, whereas the completion will contain a list of disease names, with each name on a separate line. Now, use the following code to save the dataset in JSONL format.
+
+```
+# Writing to sample.json
+with open("disease_instruct_all.jsonl", "w") as outfile:
+  for item in the_list:
+    outfile.write(json.dumps(item) + "\n")
+```
+
+The formatted dataset will be saved in a file called disease_instruct_all.jsonl. Also, it worth noting that we are concatenating the training and validation set to make a total of 1K samples. The final dataset that is used for fine-tuning has 3K samples which is consists of 1K for diseases + 1K for Chemicals + 1K for their relationships.
+
+## The Fine-Tuning
+Now, it's time to employ the prepared dataset for the fine-tuning process. The good news is that we have completed the majority of the challenging tasks. The Cohere platform will only request a nickname to save your custom model. It's worth noting that they provide advanced options if you wish to train your model for a longer duration or adjust the learning rate. Here is a detailed guide on [training a custom model](https://docs.cohere.com/docs/finetuning), and you can also refer to the Cohere documentation for Training Custom Models, complete with helpful screenshots.
+
+You should navigate to the models page using the sidebar and click on the “Create a custom model” button. On the next page, you will be prompted to select the model type, which, in our case, will be the Generate option. It is time to proceed to upload a dataset, either from the previous step or from your custom dataset. Afterward, click the "Review data" button to display a few samples from the dataset. This step is designed to verify that the platform can read your data as expected. If everything appears to be in order, click the "Continue" button.
+
+The last step is to chose a nickname for your model. Also, you can change the training hyperparameters by clicking on the “HYPERPARAMETERS (OPTIONAL)” link. You have options such as train_steps to determine the duration, learning_rate to adjust the model's speed of adaptation, and batch_size, which specifies the number of samples the model processes in each iteration, among others. In our experience, the default parameters worked well, but feel free to experiment with these settings. Once you are ready, click the "Initiate training" button.
+
+That’s it! Cohere will send you an email once the fine-tuning process is completed, providing you with the model ID for use in your APIs.
+
+## Extract Disease Names
+In the code snippet below, we employ the same prompt as seen in the first section; however, we use the model ID of the network we just fine-tuned. Let’s see if there are any improvements.
+```
+response = co.generate(  
+    model='2075d3bc-eacf-472e-bd26-23d0284ec536-ft',  
+    prompt=prompt,  
+    max_tokens=200,  
+    temperature=0.750)
+
+disease_model = response.generations[0].text
+
+print(disease_model)
+```
+
+```
+- neurodegeneration
+- glaucoma
+- blindness
+- POAG
+- glaucomas
+- retinal degenerative diseases
+- neurodegeneration
+- neurodegeneration
+```
+
+As evident from the output, the model can now identify a broad spectrum of new diseases, highlighting the effectiveness of the fine-tuning approach. The Cohere platform offers both a user-friendly interface and a potent base model to build upon.
+
+## Extract Chemical Names
+In the upcoming test, we will assess the performance of our custom models in extracting chemical names compared to the baseline model. To eliminate the need for redundant code mentions, we will only present the prompt, followed by the output of each model for easy comparison. We utilized the following prompt to extract information from a text within the test set.
+
+```
+prompt = """The following article contains technical terms including diseases, drugs and chemicals. Create a list only of the chemicals mentioned.
+
+To test the validity of the hypothesis that hypomethylation of DNA plays an important role in the initiation of carcinogenic process, 5-azacytidine (5-AzC) (10 mg/kg), an inhibitor of DNA methylation, was given to rats during the phase of repair synthesis induced by the three carcinogens, benzo[a]-pyrene (200 mg/kg), N-methyl-N-nitrosourea (60 mg/kg) and 1,2-dimethylhydrazine (1,2-DMH) (100 mg/kg). The initiated hepatocytes in the liver were assayed as the gamma-glutamyltransferase (gamma-GT) positive foci formed following a 2-week selection regimen consisting of dietary 0.02% 2-acetylaminofluorene coupled with a necrogenic dose of CCl4. The results obtained indicate that with all three carcinogens, administration of 5-AzC during repair synthesis increased the incidence of initiated hepatocytes, for example 10-20 foci/cm2 in 5-AzC and carcinogen-treated rats compared with 3-5 foci/cm2 in rats treated with carcinogen only. Administration of [3H]-5-azadeoxycytidine during the repair synthesis induced by 1,2-DMH further showed that 0.019 mol % of cytosine residues in DNA were substituted by the analogue, indicating that incorporation of 5-AzC occurs during repair synthesis. In the absence of the carcinogen, 5-AzC given after a two thirds partial hepatectomy, when its incorporation should be maximum, failed to induce any gamma-GT positive foci. The results suggest that hypomethylation of DNA per se may not be sufficient for initiation. Perhaps two events might be necessary for initiation, the first caused by the carcinogen and a second involving hypomethylation of DNA.
+
+List of extracted chemicals:"""
+```
+
+First, we will examine the output of the base model.
+
+```
+- 5-azacytidine (5-AzC)
+- benzo[a]-pyrene
+- N-methyl-N-nitrosourea
+- 1,2-dimethylhydrazine
+- CCl4
+- 2-acetylaminofluorene
+```
+
+Followed by the predictions generated by the custom fine-tuned model.
+```
+- 5-azacytidine
+- 5-AzC
+- benzo[a]-pyrene
+- N-methyl-N-nitrosourea
+- 1,2-dimethylhydrazine
+- 1,2-DMH
+- 2-acetylaminofluorene
+- CCl4
+- [3H]-5-azadeoxycytidine
+- cytosine
+```
+
+It is clear that the custom model is better suited for our specific task and adapts readily based on the samples it has encountered.
+
+## Extract Relations
+The final test involves employing the model to extract complex relationships between chemicals and the diseases they impact. It is an advanced task that could pose some challenges for the base model. As previously done, we begin by introducing the prompt we employed from the test set.
+
+```
+prompt = """The following article contains technical terms including diseases, drugs and chemicals. Create a list only of the influences between the chemicals and diseases mentioned.
+
+The yield of severe cirrhosis of the liver (defined as a shrunken finely nodular liver with micronodular histology, ascites greater than 30 ml, plasma albumin less than 2.2 g/dl, splenomegaly 2-3 times normal, and testicular atrophy approximately half normal weight) after 12 doses of carbon tetrachloride given intragastrically in the phenobarbitone-primed rat was increased from 25% to 56% by giving the initial "calibrating" dose of carbon tetrachloride at the peak of the phenobarbitone-induced enlargement of the liver. At this point it was assumed that the cytochrome P450/CCl4 toxic state was both maximal and stable. The optimal rat size to begin phenobarbitone was determined as 100 g, and this size as a group had a mean maximum relative liver weight increase 47% greater than normal rats of the same body weight. The optimal time for the initial dose of carbon tetrachloride was after 14 days on phenobarbitone.
+
+List of extracted influences:"""
+```
+
+Here is the output generated by the base model.
+
+```
+severe cirrhosis of the liver influences shrinking, finely nodular, ascites, plasma albumin, splenomegaly, testicular atrophy, carbon tetrachloride, phenobarbitone
+
+```
+And here are the generations produced by the custom model.
+
+```
+- Chemical phenobarbitone influences disease cirrhosis of the liver
+- Chemical carbon tetrachloride influences disease cirrhosis of the liver
+```
+
+The base model evidently attempts to establish some connections within the text. Nevertheless, it's evident that the custom fine-tuned model excels in producing well-formatted output and distinctly connecting each chemical to the respective disease. This task poses a significant challenge for a general-purpose model; however, it showcases the effectiveness of fine-tuning by simply providing a couple of thousands samples of the task we aim to accomplish.
+
