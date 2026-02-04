@@ -24,6 +24,23 @@ This project is intended for **educational and experimental purposes**, focusing
 
 ---
 
+## When to Use API-Based Fine-Tuning
+
+This approach is suitable when:
+- You want rapid domain adaptation without managing infrastructure
+- Model internals are not critical to your use case
+- You value ease of use over full control
+- You are prototyping or validating task feasibility
+
+It may not be suitable when:
+- Full reproducibility is required
+- Regulatory transparency is needed
+- You require fine-grained control over training dynamics
+- Open-weight deployment is mandatory
+
+
+---
+
 ## Disclaimer
 
 This repository is **not intended for clinical use**.
